@@ -3,6 +3,7 @@ MDK-ARM/*.uvoptx
 MDK-ARM/*.uvguix.*
 MDK-ARM/Objects/
 MDK-ARM/Listings/
+MDK-ARM/build/
 MDK-ARM/*.axf
 MDK-ARM/*.hex
 MDK-ARM/*.crf
@@ -10,6 +11,17 @@ MDK-ARM/*.o
 MDK-ARM/*.d
 MDK-ARM/*.map
 
+# STM32 HAL库，不提交
+Drivers/
+
 # CubeMX临时文件
 .mxproject/
 .DS_Store
+
+# VSCode / EIDE
+.vscode/
+*.code-workspace
+
+# 临时备份文件
+*.bak
+*.tmp
