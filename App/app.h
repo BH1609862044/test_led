@@ -1,9 +1,9 @@
 /**
  *********************************************************************
  * @file    app.h
- * @brief   应用层头文件
+ * @brief   应用层头文件（提高题版本）
  * @note    应用入口和全局状态管理
- *          负责按键事件回调、系统初始化编排、启动自检流程
+ *          负责按键事件回调（菜单导航）、系统初始化编排、启动自检
  *********************************************************************
  */
 #ifndef __APP_H
@@ -15,10 +15,10 @@ extern "C" {
 
 #include "stm32f1xx_hal.h"
 #include <stdint.h>
-#include "bsp_key.h"
+
 /* ---- 软件版本 ---- */
-#define APP_VERSION_STR    "v1.0.0"
-#define APP_PROJECT_NAME   "STM32 OLED LED Control Console"
+#define APP_VERSION_STR     "v1.1.0"
+#define APP_PROJECT_NAME    "STM32 OLED LED Control Console"
 
 /* ---- 应用层接口 ---- */
 
@@ -35,10 +35,10 @@ void App_Loop(void);
 
 /**
  * @brief  按键事件回调（由 Component/Key 调用）
- * @param  key_id  按键编号
- * @param  event   事件类型
+ * @param  key_id  按键编号 0/1/2
+ * @param  event   事件类型（KeyEventType）
  */
-void App_OnKeyEvent(KeyID key_id, KeyLevel event);
+void App_OnKeyEvent(uint8_t key_id, uint8_t event);
 
 /**
  * @brief  获取系统运行时间（秒）

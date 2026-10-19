@@ -19,6 +19,8 @@ extern "C" {
 /* ---- 配置 ---- */
 #define UART_RX_BUF_SIZE   64     //单条命令最大长度 
 #define UART_CMD_BUF_MAX   8      //最大命令行数（环形缓冲区大小）
+#define UART_RX_LINE_TOO_LONG 0xFFFFU
+#define UART_RX_QUEUE_FULL 0xFFFEU
 
 /* ---- 设备层接口 ---- */
 
@@ -34,16 +36,16 @@ void Device_UART_Init(void);
 void Device_UART_SendString(const char *str);
 
 /**
- * @brief  查询是否有完整行就绪
+ * @brief  查询是否有完整行就绪（队列最多缓存 UART_CMD_BUF_MAX 条）
  * @return 1 = 有完整行，0 = 没有
  */
 uint8_t Device_UART_IsLineReady(void);
 
 /**
- * @brief  读取一行命令（读完后清除就绪标志）
+ * @brief  读取一行命令（读取队列最早的一条）
  * @param  buf   输出缓冲区
  * @param  size  缓冲区大小
- * @return 实际读取的字符数
+ * @return 实际读取的字符数；超长行/队列溢出分别返回对应错误标记
  */
 uint16_t Device_UART_ReadLine(char *buf, uint16_t size);
 

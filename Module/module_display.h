@@ -1,9 +1,9 @@
 /**
  *********************************************************************
  * @file    module_display.h
- * @brief   OLED 显示业务模块头文件
- * @note    负责 OLED 界面的组织和刷新
- *          基础题实现主界面：显示模式、LED 状态、运行计数
+ * @brief   OLED 显示模块头文件（多级菜单）
+ * @note    Module 层，负责 OLED 界面的组织和刷新
+ *          5 个页面：首页 / LED控制 / 闪烁参数 / 系统信息 / 命令说明
  *          显示数据来自 Module 层，不直接操作硬件
  *********************************************************************
  */
@@ -19,10 +19,25 @@ extern "C" {
 
 /* ---- 页面类型 ---- */
 typedef enum {
-    PAGE_BOOT = 0,      /* 启动页 */
-    PAGE_MAIN = 1,      /* 主界面 */
+    PAGE_BOOT = 0,        /* 启动页 */
+    PAGE_HOME = 1,        /* 第1页：首页 */
+    PAGE_LED_CTRL = 2,    /* 第2页：LED 控制 */
+    PAGE_BLINK_PARAM = 3, /* 第3页：闪烁参数 */
+    PAGE_SYSINFO = 4,     /* 第4页：系统信息 */
+    PAGE_CMD_HELP = 5,    /* 第5页：命令说明 */
     PAGE_MAX
 } PageType;
+
+/* ---- 菜单操作 ---- */
+typedef enum {
+    MENU_KEY_NEXT = 0,    /* KEY1 短按：下一页 / 向下选择 */
+    MENU_KEY_PREV = 1,    /* KEY1 长按：回到首页 */
+    MENU_KEY_INC  = 2,    /* KEY2 短按：加 / 确认 */
+    MENU_KEY_DEC  = 3,    /* KEY3 短按：减 / 返回 */
+    MENU_KEY_INC_HOLD = 4,/* KEY2 连续触发：快速加 */
+    MENU_KEY_DEC_HOLD = 5,/* KEY3 连续触发：快速减 */
+    MENU_KEY_HOME = 6     /* KEY1 长按：回到首页 */
+} MenuKeyOp;
 
 /* ---- 模块接口 ---- */
 
@@ -37,15 +52,22 @@ void Module_Display_Init(void);
 void Module_Display_ShowBootPage(void);
 
 /**
- * @brief  切换到主界面
+ * @brief  切换到首页
  */
-void Module_Display_ShowMainPage(void);
+void Module_Display_ShowHomePage(void);
 
 /**
- * @brief  刷新主界面（LED 状态、模式、计数等变化时调用）
- * @note   只刷新变化的行，减少闪烁
+ * @brief  菜单按键输入（App 层按键回调中调用）
+ * @param  op  按键操作
+ * @note   各页面根据按键操作做不同响应
  */
-void Module_Display_RefreshMain(void);
+void Module_Display_MenuKey(MenuKeyOp op);
+
+/**
+ * @brief  获取当前页面
+ * @return 当前页面编号
+ */
+PageType Module_Display_GetCurrentPage(void);
 
 /**
  * @brief  显示模块周期刷新（建议 100ms 调用一次）
@@ -54,7 +76,7 @@ void Module_Display_RefreshMain(void);
 void Module_Display_Process(void);
 
 /**
- * @brief  设置错误信息（临时显示）
+ * @brief  显示错误提示（临时在屏幕底部显示）
  * @param  err_str  错误字符串
  */
 void Module_Display_ShowError(const char *err_str);

@@ -1,185 +1,503 @@
 /**
  *********************************************************************
  * @file    module_display.c
- * @brief   OLED 显示业务模块实现
- * @note    主界面布局：
- *          第0页：STM32 CONTROL     （标题）
- *          第1页：MODE: MANUAL       （当前模式）
- *          第2页：LED: OFF           （LED 状态）
- *          第3页：COUNT: 0000        （按键计数）
- *          第4页：TIME: 0000s        （运行时间）
- *
- *          显示数据从 Module_LED 等模块读取，不直接操作硬件
- *          通过 device_oled 接口输出
+ * @brief   OLED 显示模块实现（多级菜单）
+ * @note    5 个页面：首页 / LED控制 / 闪烁参数 / 系统信息 / 命令说明
+ *          KEY1 短按 = 下一页；KEY1 长按 = 回首页
+ *          KEY2 短按 = 加/确认；KEY3 短按 = 减/返回
+ *          KEY2/KEY3 长按连续触发 = 快速增减
  *********************************************************************
  */
 #include "module_display.h"
 #include "device_oled.h"
 #include "module_led.h"
-#include "module_cmd.h"
+#include "module_params.h"
+#include "module_sysinfo.h"
 #include "component_key.h"
-// 灯模式枚举
-typedef enum {
-    // 保留你原来所有的枚举值
-    // ...
-    
-    // 新增：无效初始值，拼写必须和c文件里完全一致
-    LED_MODE_INVALID = 0xFF
-} LedMode1;
+#include <stdio.h>
+#include <string.h>
 
-// 灯状态枚举
-typedef enum {
-    // 保留你原来所有的枚举值
-    // ...
-    
-    // 新增：无效初始值
-    LED_STATE_INVALID = 0xFF
-} LedState1;
+/* ---- 私有变量 ---- */
+static PageType s_current_page = PAGE_HOME;
+static uint8_t  s_page_dirty = 1;  /* 页面脏标记：1 = 需要全刷 */
 
-/* ---- 状态 ---- */
-static PageType s_current_page = PAGE_BOOT;
-static uint8_t  s_need_refresh = 1;    /* 全屏刷新标志 */
+/* 各页面的选中项 / 编辑值 */
+static int s_led_cursor = 0;       /* LED 控制页光标：0=模式, 1=状态 */
+static int s_param_cursor = 0;     /* 参数页光标：0=慢闪, 1=快闪 */
 
-/* 缓存上一次显示的值，用于只刷新变化行 */
-static LedMode  s_last_mode = LED_MODE_INVALID;
-static LedState s_last_led  = LED_STATE_INVALID;
+/* 错误提示 */
+static char s_error_buf[17];
+static uint8_t s_error_show = 0;
+static uint32_t s_error_tick = 0;
+
+/* 页码指示缓存（避免重复刷新） */
+static LedMode s_last_mode = (LedMode)0xFF;
+static LedState s_last_led_state = (LedState)0xFF;
 static uint32_t s_last_count = 0xFFFFFFFF;
-static uint32_t s_last_seconds = 0xFFFFFFFF;
+static uint32_t s_last_uptime = 0xFFFFFFFF;
+
+/* ---- 私有函数声明 ---- */
+static void draw_home_page(void);
+static void draw_led_ctrl_page(void);
+static void draw_blink_param_page(void);
+static void draw_sysinfo_page(void);
+static void draw_cmd_help_page(void);
+static void draw_page_indicator(void);
+static void refresh_home_dynamic(void);
+static void refresh_sysinfo_dynamic(void);
+static void show_error_check(void);
 
 /**
- * @brief  显示模块初始化
+ * @brief  初始化
  */
 void Module_Display_Init(void)
 {
-    OLED_Init();
-    OLED_Clear();
-    s_current_page = PAGE_BOOT;
-    s_need_refresh = 1;
-    s_last_mode = LED_MODE_INVALID;
-		s_last_led  = LED_STATE_INVALID;
-    s_last_count = 0xFFFFFFFF;
-    s_last_seconds = 0xFFFFFFFF;
+    Device_OLED_Init();
+    Device_OLED_Clear();
+    s_current_page = PAGE_HOME;
+    s_page_dirty = 1;
+    s_error_show = 0;
+    s_led_cursor = 0;
+    s_param_cursor = 0;
 }
 
 /**
- * @brief  显示启动页（上电自检界面）
+ * @brief  显示启动页
  */
 void Module_Display_ShowBootPage(void)
 {
-    OLED_Clear();
-    OLED_ShowString(0, 20, "STM32 OLED");
-    OLED_ShowString(1, 16, "LED Control");
-    OLED_ShowString(2, 22, "Console");
-    OLED_ShowString(4, 4,  "Version: v1.0");
-    OLED_ShowString(6, 16, "Booting...");
+    Device_OLED_Clear();
+    Device_OLED_ShowString(0, 0, "STM32 CONTROL");
+    Device_OLED_ShowString(0, 2, "  Booting...  ");
+    Device_OLED_ShowString(0, 4, " v1.1.0 ");
+    Device_OLED_Refresh();
     s_current_page = PAGE_BOOT;
-    s_need_refresh = 1;
 }
 
 /**
- * @brief  切换到主界面
+ * @brief  切换到首页
  */
-void Module_Display_ShowMainPage(void)
+void Module_Display_ShowHomePage(void)
 {
-    OLED_Clear();
-    s_current_page = PAGE_MAIN;
-    s_need_refresh = 1;
-    s_last_mode = LED_MODE_INVALID;
-		s_last_led  = LED_STATE_INVALID;
-    s_last_count = 0xFFFFFFFF;
-    s_last_seconds = 0xFFFFFFFF;
-
-    /* 静态标题行 */
-    OLED_ShowString(0, 12, "STM32 CONTROL");
-
-    /* 立即刷新一次完整界面 */
-    Module_Display_RefreshMain();
+    s_current_page = PAGE_HOME;
+    s_page_dirty = 1;
 }
 
 /**
- * @brief  刷新主界面（只刷新变化的行）
+ * @brief  菜单按键输入
  */
-void Module_Display_RefreshMain(void)
+void Module_Display_MenuKey(MenuKeyOp op)
 {
-    if (s_current_page != PAGE_MAIN) return;
+    if (op == MENU_KEY_HOME) {
+        if (s_current_page != PAGE_HOME) {
+            s_current_page = PAGE_HOME;
+            s_page_dirty = 1;
+        }
+        return;
+    }
 
-    /* --- 模式行 --- */
-    {
-        LedMode mode = Module_LED_GetMode();
-        if (mode != s_last_mode || s_need_refresh) {
-            OLED_ShowString(2, 0, "                ");  /* 清行 */
-            if (mode == LED_MODE_MANUAL) {
-                OLED_ShowString(2, 0, "MODE: MANUAL");
+    switch (s_current_page) {
+
+    /* ---- 首页 ---- */
+    case PAGE_HOME:
+        if (op == MENU_KEY_NEXT) {
+            s_current_page = PAGE_LED_CTRL;
+            s_led_cursor = 0;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_PREV) {
+            /* 已经在首页，什么都不做 */
+        }
+        break;
+
+    /* ---- LED 控制页 ---- */
+    case PAGE_LED_CTRL:
+        if (op == MENU_KEY_NEXT) {
+            s_current_page = PAGE_BLINK_PARAM;
+            s_param_cursor = 0;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_PREV) {
+            s_current_page = PAGE_HOME;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_INC) {
+            if (s_led_cursor == 0) {
+                /* 切换模式 */
+                LedMode m = Module_LED_GetMode();
+                m = (LedMode)((m + 1) % 3);  /* 0/1/2 循环 */
+                Module_LED_SetMode(m);
+                Module_Params_SetLedMode(m);
             } else {
-                OLED_ShowString(2, 0, "MODE: BLINK");
+                /* 切换 LED 状态 */
+                Module_LED_Toggle();
+                Module_Params_SetLedState((uint8_t)Module_LED_GetState());
             }
-            s_last_mode = mode;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_DEC) {
+            /* 上下移动光标 */
+            s_led_cursor = (s_led_cursor == 0) ? 1 : 0;
+            s_page_dirty = 1;
         }
-    }
+        break;
 
-    /* --- LED 状态行 --- */
-    {
-        LedState state = Module_LED_GetState();
-        if (state != s_last_led || s_need_refresh) {
-            OLED_ShowString(3, 0, "                ");  /* 清行 */
-            if (state == LED_ON) {
-                OLED_ShowString(3, 0, "LED: ON");
+    /* ---- 闪烁参数页 ---- */
+    case PAGE_BLINK_PARAM:
+        if (op == MENU_KEY_NEXT) {
+            s_current_page = PAGE_SYSINFO;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_PREV) {
+            s_current_page = PAGE_LED_CTRL;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_INC || op == MENU_KEY_INC_HOLD) {
+            uint16_t step = (op == MENU_KEY_INC_HOLD) ? 50 : 10;
+            if (s_param_cursor == 0) {
+                /* 慢闪周期 + */
+                uint16_t p = Module_LED_GetBlinkPeriod();
+                if (p + step <= 5000) {
+                    p += step;
+                    Module_LED_SetBlinkPeriod(p);
+                    Module_Params_SetBlinkPeriod(p);
+                }
             } else {
-                OLED_ShowString(3, 0, "LED: OFF");
+                /* 快闪周期 + */
+                uint16_t p = Module_LED_GetFastPeriod();
+                if (p + step <= 5000) {
+                    p += step;
+                    Module_LED_SetFastPeriod(p);
+                    Module_Params_SetFastPeriod(p);
+                }
             }
-            s_last_led = state;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_DEC) {
+            /* 上下移动光标 */
+            s_param_cursor = (s_param_cursor == 0) ? 1 : 0;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_DEC_HOLD) {
+            /* 连续减 */
+            uint16_t step = 50;
+            if (s_param_cursor == 0) {
+                uint16_t p = Module_LED_GetBlinkPeriod();
+                if (p > step && p - step >= 100) {
+                    p -= step;
+                    Module_LED_SetBlinkPeriod(p);
+                    Module_Params_SetBlinkPeriod(p);
+                } else {
+                    p = 100;
+                    Module_LED_SetBlinkPeriod(p);
+                    Module_Params_SetBlinkPeriod(p);
+                }
+            } else {
+                uint16_t p = Module_LED_GetFastPeriod();
+                if (p > step && p - step >= 100) {
+                    p -= step;
+                    Module_LED_SetFastPeriod(p);
+                    Module_Params_SetFastPeriod(p);
+                } else {
+                    p = 100;
+                    Module_LED_SetFastPeriod(p);
+                    Module_Params_SetFastPeriod(p);
+                }
+            }
+            s_page_dirty = 1;
         }
-    }
+        break;
 
-    /* --- 按键计数行 --- */
-    {
-        uint32_t count = Key_GetEventCount();
-        /* 注意：Key_GetEventCount 不会清零，但我们只显示增量值 */
-        if (count != s_last_count || s_need_refresh) {
-            OLED_ShowString(4, 0, "COUNT:     ");
-            OLED_ShowNum(4, 6*6, count, 4);
-            s_last_count = count;
+    /* ---- 系统信息页 ---- */
+    case PAGE_SYSINFO:
+        if (op == MENU_KEY_NEXT) {
+            s_current_page = PAGE_CMD_HELP;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_PREV) {
+            s_current_page = PAGE_BLINK_PARAM;
+            s_page_dirty = 1;
         }
-    }
+        break;
 
-    s_need_refresh = 0;
+    /* ---- 命令说明页 ---- */
+    case PAGE_CMD_HELP:
+        if (op == MENU_KEY_NEXT) {
+            /* 循环回到首页 */
+            s_current_page = PAGE_HOME;
+            s_page_dirty = 1;
+        } else if (op == MENU_KEY_PREV) {
+            s_current_page = PAGE_SYSINFO;
+            s_page_dirty = 1;
+        }
+        break;
+
+    default:
+        break;
+    }
 }
 
 /**
- * @brief  显示模块周期处理（100ms 调用一次）
- * @note   刷新运行时间等动态信息
+ * @brief  获取当前页面
+ */
+PageType Module_Display_GetCurrentPage(void)
+{
+    return s_current_page;
+}
+
+/**
+ * @brief  周期刷新（100ms 一次）
  */
 void Module_Display_Process(void)
 {
-    static uint32_t tick_100ms = 0;
-    uint32_t now = HAL_GetTick();
-    uint32_t seconds;
-
-    /* 每 100ms 处理一次 */
-    if (now - tick_100ms < 100) return;
-    tick_100ms = now;
-
-    if (s_current_page != PAGE_MAIN) return;
-
-    /* 刷新运行时间（秒）*/
-    seconds = now / 1000;
-    if (seconds != s_last_seconds) {
-        OLED_ShowString(5, 0, "TIME:       ");
-        OLED_ShowNum(5, 5*6, seconds, 5);
-        OLED_ShowString(5, 10*6, "s");
-        s_last_seconds = seconds;
+    /* 页面切换时全刷 */
+    if (s_page_dirty) {
+        s_page_dirty = 0;
+        Device_OLED_Clear();
+        switch (s_current_page) {
+        case PAGE_HOME:        draw_home_page(); break;
+        case PAGE_LED_CTRL:    draw_led_ctrl_page(); break;
+        case PAGE_BLINK_PARAM: draw_blink_param_page(); break;
+        case PAGE_SYSINFO:     draw_sysinfo_page(); break;
+        case PAGE_CMD_HELP:    draw_cmd_help_page(); break;
+        default: break;
+        }
+        draw_page_indicator();
+        Device_OLED_Refresh();
+        return;
     }
 
-    /* 定期刷新模式和 LED 状态，防止意外错乱 */
-    Module_Display_RefreshMain();
+    /* 动态内容局部刷新 */
+    switch (s_current_page) {
+    case PAGE_HOME:    refresh_home_dynamic(); break;
+    case PAGE_SYSINFO: refresh_sysinfo_dynamic(); break;
+    default: break;
+    }
+
+    /* 错误提示超时检查 */
+    show_error_check();
+}
+
+/* ========== 各页面绘制 ========== */
+
+/**
+ * @brief  首页
+ */
+static void draw_home_page(void)
+{
+    char buf[16];
+
+    Device_OLED_ShowString(0, 0, "STM32 CONTROL");
+
+    /* 模式 */
+    Device_OLED_ShowString(0, 2, "MODE: ");
+    Device_OLED_ShowString(6*6, 2, Module_LED_GetModeName(Module_LED_GetMode()));
+    s_last_mode = Module_LED_GetMode();
+
+    /* LED 状态 */
+    Device_OLED_ShowString(0, 3, "LED: ");
+    Device_OLED_ShowString(5*6, 3, (Module_LED_GetState() == LED_ON) ? "ON " : "OFF");
+    s_last_led_state = Module_LED_GetState();
+
+    /* 按键次数 */
+    snprintf(buf, sizeof(buf), "COUNT:%04lu", (unsigned long)Key_GetEventCount());
+    Device_OLED_ShowString(0, 5, buf);
+    s_last_count = Key_GetEventCount();
+
+    /* 运行时间 */
+    snprintf(buf, sizeof(buf), "TIME:%05lus", (unsigned long)Module_SysInfo_GetUptime());
+    Device_OLED_ShowString(0, 6, buf);
+    s_last_uptime = Module_SysInfo_GetUptime();
 }
 
 /**
- * @brief  显示错误信息（临时显示在第 7 页）
+ * @brief  LED 控制页
+ */
+static void draw_led_ctrl_page(void)
+{
+    Device_OLED_ShowString(0, 0, ">> LED CTRL <<");
+
+    /* 第 2 行：模式选择 */
+    if (s_led_cursor == 0) {
+        Device_OLED_ShowString(0, 2, "> MODE: ");
+    } else {
+        Device_OLED_ShowString(0, 2, "  MODE: ");
+    }
+    Device_OLED_ShowString(8*6, 2, Module_LED_GetModeName(Module_LED_GetMode()));
+
+    /* 第 4 行：LED 状态 */
+    if (s_led_cursor == 1) {
+        Device_OLED_ShowString(0, 4, "> LED : ");
+    } else {
+        Device_OLED_ShowString(0, 4, "  LED : ");
+    }
+    Device_OLED_ShowString(8*6, 4, (Module_LED_GetState() == LED_ON) ? "ON " : "OFF");
+
+    Device_OLED_ShowString(0, 6, "K2=SET  K3=MOVE");
+}
+
+/**
+ * @brief  闪烁参数页
+ */
+static void draw_blink_param_page(void)
+{
+    char buf[16];
+
+    Device_OLED_ShowString(0, 0, ">> BLINK PARA <<");
+
+    /* 慢闪周期 */
+    if (s_param_cursor == 0) {
+        Device_OLED_ShowString(0, 2, "> BLINK: ");
+    } else {
+        Device_OLED_ShowString(0, 2, "  BLINK: ");
+    }
+    snprintf(buf, sizeof(buf), "%4dms", Module_LED_GetBlinkPeriod());
+    Device_OLED_ShowString(9*6, 2, buf);
+
+    /* 快闪周期 */
+    if (s_param_cursor == 1) {
+        Device_OLED_ShowString(0, 4, "> FAST : ");
+    } else {
+        Device_OLED_ShowString(0, 4, "  FAST : ");
+    }
+    snprintf(buf, sizeof(buf), "%4dms", Module_LED_GetFastPeriod());
+    Device_OLED_ShowString(9*6, 4, buf);
+
+    Device_OLED_ShowString(0, 6, "K2=+  K3=SEL");
+}
+
+/**
+ * @brief  系统信息页
+ */
+static void draw_sysinfo_page(void)
+{
+    char buf[16];
+
+    Device_OLED_ShowString(0, 0, ">> SYS INFO <<");
+
+    Device_OLED_ShowString(0, 2, "VER: ");
+    Device_OLED_ShowString(5*6, 2, Module_SysInfo_GetSwVersion());
+
+    snprintf(buf, sizeof(buf), "UP:%05lus", (unsigned long)Module_SysInfo_GetUptime());
+    Device_OLED_ShowString(0, 3, buf);
+    s_last_uptime = Module_SysInfo_GetUptime();
+
+    snprintf(buf, sizeof(buf), "KEY:%04lu", (unsigned long)Key_GetEventCount());
+    Device_OLED_ShowString(0, 4, buf);
+
+    snprintf(buf, sizeof(buf), "CMD OK:%lu", (unsigned long)Module_SysInfo_GetCmdOkCount());
+    Device_OLED_ShowString(0, 5, buf);
+
+    snprintf(buf, sizeof(buf), "ERR:%lu", (unsigned long)Module_SysInfo_GetCmdErrCount());
+    Device_OLED_ShowString(0, 6, buf);
+}
+
+/**
+ * @brief  命令说明页
+ */
+static void draw_cmd_help_page(void)
+{
+    Device_OLED_ShowString(0, 0, ">> CMD HELP <<");
+    Device_OLED_ShowString(0, 2, "GET STATUS");
+    Device_OLED_ShowString(0, 3, "GET PARAM");
+    Device_OLED_ShowString(0, 4, "SET MODE 0/1/2");
+    Device_OLED_ShowString(0, 5, "SET PERIOD N");
+    Device_OLED_ShowString(0, 6, "SAVE / RESET");
+    Device_OLED_ShowString(0, 7, "See UART HELP");
+}
+
+/**
+ * @brief  绘制页面指示器（底部显示页码）
+ */
+static void draw_page_indicator(void)
+{
+    char buf[8];
+    if (s_current_page >= PAGE_HOME && s_current_page <= PAGE_CMD_HELP) {
+        snprintf(buf, sizeof(buf), "P%u/5", (unsigned)(s_current_page - PAGE_HOME + 1));
+        Device_OLED_ShowString(16*6 - 4*6, 7, buf);
+    }
+}
+
+/* ========== 动态内容局部刷新 ========== */
+
+/**
+ * @brief  首页动态内容刷新
+ */
+static void refresh_home_dynamic(void)
+{
+    char buf[16];
+
+    /* 模式变化 */
+    if (s_last_mode != Module_LED_GetMode()) {
+        Device_OLED_ShowString(6*6, 2, "     ");
+        Device_OLED_ShowString(6*6, 2, Module_LED_GetModeName(Module_LED_GetMode()));
+        s_last_mode = Module_LED_GetMode();
+        Device_OLED_Refresh();
+    }
+
+    /* LED 状态变化 */
+    if (s_last_led_state != Module_LED_GetState()) {
+        Device_OLED_ShowString(5*6, 3, "   ");
+        Device_OLED_ShowString(5*6, 3, (Module_LED_GetState() == LED_ON) ? "ON " : "OFF");
+        s_last_led_state = Module_LED_GetState();
+        Device_OLED_Refresh();
+    }
+
+    /* 按键次数变化 */
+    if (s_last_count != Key_GetEventCount()) {
+        snprintf(buf, sizeof(buf), "%04lu", (unsigned long)Key_GetEventCount());
+        Device_OLED_ShowString(6*6, 5, buf);
+        s_last_count = Key_GetEventCount();
+        Device_OLED_Refresh();
+    }
+
+    /* 运行时间（每秒变化） */
+    if (s_last_uptime != Module_SysInfo_GetUptime()) {
+        snprintf(buf, sizeof(buf), "%05lus", (unsigned long)Module_SysInfo_GetUptime());
+        Device_OLED_ShowString(5*6, 6, buf);
+        s_last_uptime = Module_SysInfo_GetUptime();
+        Device_OLED_Refresh();
+    }
+}
+
+/**
+ * @brief  系统信息页动态刷新
+ */
+static void refresh_sysinfo_dynamic(void)
+{
+    char buf[16];
+
+    if (s_last_uptime != Module_SysInfo_GetUptime()) {
+        snprintf(buf, sizeof(buf), "%05lus", (unsigned long)Module_SysInfo_GetUptime());
+        Device_OLED_ShowString(3*6, 3, buf);
+        s_last_uptime = Module_SysInfo_GetUptime();
+        Device_OLED_Refresh();
+    }
+}
+
+/* ========== 错误提示 ========== */
+
+/**
+ * @brief  显示错误提示
  */
 void Module_Display_ShowError(const char *err_str)
 {
-    if (err_str == 0) return;
-    OLED_ShowString(7, 0, "                ");  /* 清行 */
-    OLED_ShowString(7, 0, err_str);
+    if (err_str == NULL) return;
+
+    strncpy(s_error_buf, err_str, sizeof(s_error_buf) - 1);
+    s_error_buf[sizeof(s_error_buf) - 1] = '\0';
+
+    /* 在屏幕底部显示 */
+    Device_OLED_ShowString(0, 7, "                ");
+    Device_OLED_ShowString(0, 7, "ERR:");
+    Device_OLED_ShowString(4*6, 7, s_error_buf);
+    Device_OLED_Refresh();
+
+    s_error_show = 1;
+    s_error_tick = HAL_GetTick();
+}
+
+/**
+ * @brief  错误提示超时自动清除
+ */
+static void show_error_check(void)
+{
+    if (!s_error_show) return;
+
+    if (HAL_GetTick() - s_error_tick > 2000) {
+        /* 2 秒后清除，重新绘制底部页码 */
+        s_error_show = 0;
+        s_page_dirty = 1;  /* 触发重绘 */
+    }
 }

@@ -15,8 +15,18 @@
 static uint8_t  s_rx_byte;                       // 单字节接收缓冲 
 static char     s_rx_buf[UART_RX_BUF_SIZE];      // 当前行缓冲区 
 static uint16_t s_rx_idx = 0;                    // 当前行写入位置 
-static volatile uint8_t  s_line_ready = 0;       // 一行就绪标志 
-static volatile uint8_t  s_line_overflow = 0;    // 行超长标志 
+static uint8_t  s_line_overflow = 0;             // 当前行超长标志
+
+typedef struct {
+    char data[UART_RX_BUF_SIZE];
+    uint16_t len;
+    uint8_t too_long;
+} UARTLine;
+
+static UARTLine s_line_queue[UART_CMD_BUF_MAX + 1];
+static volatile uint8_t s_queue_head = 0;
+static volatile uint8_t s_queue_tail = 0;
+static volatile uint8_t s_queue_overflow = 0;
 
 /* ---- 统计计数 ---- */
 static uint32_t s_rx_byte_count = 0;  // 累计接收字节数
@@ -28,8 +38,12 @@ static uint32_t s_cmd_count = 0;      // 累计命令行数
 void Device_UART_Init(void)
 {
     s_rx_idx = 0;
-    s_line_ready = 0;
     s_line_overflow = 0;
+    s_queue_head = 0;
+    s_queue_tail = 0;
+    s_queue_overflow = 0;
+    s_rx_byte_count = 0;
+    s_cmd_count = 0;
 
     /* 开启第一个字节的中断接收 */
     HAL_UART_Receive_IT(BSP_UART_GetHandle(), &s_rx_byte, 1);
@@ -48,7 +62,7 @@ void Device_UART_SendString(const char *str)
  */
 uint8_t Device_UART_IsLineReady(void)
 {
-    return s_line_ready;
+    return (s_queue_head != s_queue_tail) || s_queue_overflow;
 }
 
 /**
@@ -59,28 +73,44 @@ uint8_t Device_UART_IsLineReady(void)
  */
 uint16_t Device_UART_ReadLine(char *buf, uint16_t size)
 {
+    UARTLine *line;
     uint16_t len = 0;
+    uint8_t tail;
 
-    if (!s_line_ready) {
-        if (size > 0) buf[0] = '\0';
+    if (buf == 0 || size == 0) {
         return 0;
     }
 
-    /* 超长行返回空字符串，由调用方决定如何处理 */
-    if (s_line_overflow) {
-        if (size > 0) buf[0] = '\0';
-        len = 0;
+    tail = s_queue_tail;
+    if (tail == s_queue_head) {
+        uint32_t primask = __get_PRIMASK();
+        uint8_t queue_overflow;
+
+        __disable_irq();
+        queue_overflow = (s_queue_tail == s_queue_head) && s_queue_overflow;
+        if (queue_overflow) {
+            s_queue_overflow = 0;
+        }
+        __set_PRIMASK(primask);
+
+        buf[0] = '\0';
+        return queue_overflow ? UART_RX_QUEUE_FULL : 0;
+    }
+
+    line = &s_line_queue[tail];
+    if (line->too_long) {
+        buf[0] = '\0';
+        len = UART_RX_LINE_TOO_LONG;
     } else {
-        len = s_rx_idx;
-        if (len >= size) len = size - 1;
-        memcpy(buf, s_rx_buf, len);
+        len = line->len;
+        if (len >= size) {
+            len = size - 1;
+        }
+        memcpy(buf, line->data, len);
         buf[len] = '\0';
     }
 
-    /* 清除状态，准备下一行 */
-    s_rx_idx = 0;
-    s_line_ready = 0;
-    s_line_overflow = 0;
+    s_queue_tail = (tail + 1) % (UART_CMD_BUF_MAX + 1);
 
     return len;
 }
@@ -108,32 +138,28 @@ uint32_t Device_UART_GetCmdCount(void)
  */
 void Device_UART_RxCpltCallback(void)
 {
+    uint8_t next_head;
+
     s_rx_byte_count++;
 
-    if (s_line_ready) {
-        //上一行还没被读走，丢弃当前字节（保持就绪状态）
-        HAL_UART_Receive_IT(BSP_UART_GetHandle(), &s_rx_byte, 1);
-        return;
-    }
-
-    if (s_line_overflow) {
-        //已经超长，继续丢弃直到遇到换行 
-        if (s_rx_byte == '\n') {
-            s_line_overflow = 2;  //标记为超长就绪 
-            s_line_ready = 1;
-            s_cmd_count++;
-        }
-        HAL_UART_Receive_IT(BSP_UART_GetHandle(), &s_rx_byte, 1);
-        return;
-    }
-
     if (s_rx_byte == '\n') {
-        //行结束 
         s_rx_buf[s_rx_idx] = '\0';
-        s_line_ready = 1;
+        next_head = (s_queue_head + 1) % (UART_CMD_BUF_MAX + 1);
+        if (next_head != s_queue_tail) {
+            memcpy(s_line_queue[s_queue_head].data, s_rx_buf, sizeof(s_rx_buf));
+            s_line_queue[s_queue_head].len = s_rx_idx;
+            s_line_queue[s_queue_head].too_long = s_line_overflow;
+            s_queue_head = next_head;
+        } else {
+            s_queue_overflow = 1;
+        }
         s_cmd_count++;
+        s_rx_idx = 0;
+        s_line_overflow = 0;
     } else if (s_rx_byte == '\r') {
         //忽略回车符 
+    } else if (s_line_overflow) {
+        /* 超长行继续丢弃，直到换行 */
     } else {
         //普通字符 
         if (s_rx_idx < UART_RX_BUF_SIZE - 1) {

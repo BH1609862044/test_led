@@ -4,10 +4,11 @@
  * @brief   任务调度器实现
  * @note    协作式调度：每个任务记录上次执行时间，到点就执行
  *          任务周期配置：
- *            TASK_KEY_SCAN    —— 10ms （按键扫描）
- *            TASK_LED_PROCESS —— 10ms （LED 闪烁处理）
- *            TASK_CMD_PROCESS —— 每次循环（串口命令处理）
- *            TASK_DISPLAY     —— 100ms（OLED 显示刷新）
+ *            TASK_KEY_SCAN    —— 10ms  （按键扫描 + 消抖）
+ *            TASK_LED_PROCESS —— 10ms  （LED 闪烁处理）
+ *            TASK_CMD_PROCESS —— 0ms   （每次循环，串口命令处理）
+ *            TASK_DISPLAY     —— 100ms （OLED 显示刷新）
+ *            TASK_1HZ         —— 1000ms（秒级计时，系统信息）
  *********************************************************************
  */
 #include "task_scheduler.h"
@@ -15,6 +16,7 @@
 #include "module_led.h"
 #include "module_cmd.h"
 #include "module_display.h"
+#include "module_sysinfo.h"
 
 /* ---- 任务控制块 ---- */
 typedef struct {
@@ -28,6 +30,7 @@ static void Task_KeyScanHandler(void);
 static void Task_LEDProcessHandler(void);
 static void Task_CmdProcessHandler(void);
 static void Task_DisplayHandler(void);
+static void Task_1HzHandler(void);
 
 /* ---- 任务表 ---- */
 static TaskCtrl s_tasks[TASK_NUM] = {
@@ -35,6 +38,7 @@ static TaskCtrl s_tasks[TASK_NUM] = {
     [TASK_LED_PROCESS] = { 10,   0, Task_LEDProcessHandler },
     [TASK_CMD_PROCESS] = { 0,    0, Task_CmdProcessHandler },
     [TASK_DISPLAY]     = { 100,  0, Task_DisplayHandler },
+    [TASK_1HZ]         = { 1000, 0, Task_1HzHandler },
 };
 
 /* ============================================================
@@ -73,6 +77,14 @@ static void Task_DisplayHandler(void)
     Module_Display_Process();
 }
 
+/**
+ * @brief  1Hz 任务（每秒执行一次）
+ */
+static void Task_1HzHandler(void)
+{
+    Module_SysInfo_TickSecond();
+}
+
 /* ============================================================
  * 调度器公共接口
  * ============================================================ */
@@ -91,8 +103,6 @@ void Task_SchedulerInit(void)
 
 /**
  * @brief  调度器主循环
- * @note   在 main.c 的 while(1) 中调用
- *         每次循环遍历所有任务，到点的任务执行
  */
 void Task_SchedulerRun(void)
 {

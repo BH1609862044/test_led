@@ -26,10 +26,12 @@ test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
 test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
+test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
+test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 test_led\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 test_led\main.o: ../Core/Inc/i2c.h
+test_led\main.o: ../Core/Inc/tim.h
 test_led\main.o: ../Core/Inc/usart.h
 test_led\main.o: ../Core/Inc/gpio.h
-test_led\main.o: ..\App\app.h
-test_led\main.o: ..\BSP\bsp_key.h
-test_led\main.o: ..\Device\device_uart.h
+test_led\main.o: ../App/app.h
+test_led\main.o: ../Device/device_uart.h

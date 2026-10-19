@@ -705,15 +705,20 @@
               <FileType>1</FileType>
               <FilePath>..\Device\device_uart.c</FilePath>
             </File>
+            <File>
+              <FileName>device_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Device\device_flash.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
           <GroupName>Component</GroupName>
           <Files>
             <File>
-              <FileName>compoent_key.c</FileName>
+              <FileName>component_key.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Component\compoent_key.c</FilePath>
+              <FilePath>..\Component\component_key.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -734,6 +739,16 @@
               <FileName>module_led.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Module\module_led.c</FilePath>
+            </File>
+            <File>
+              <FileName>module_params.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Module\module_params.c</FilePath>
+            </File>
+            <File>
+              <FileName>module_sysinfo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Module\module_sysinfo.c</FilePath>
             </File>
           </Files>
         </Group>
