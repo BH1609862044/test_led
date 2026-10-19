@@ -18,14 +18,31 @@
 #include "module_led.h"
 #include "module_cmd.h"
 #include "component_key.h"
+// 灯模式枚举
+typedef enum {
+    // 保留你原来所有的枚举值
+    // ...
+    
+    // 新增：无效初始值，拼写必须和c文件里完全一致
+    LED_MODE_INVALID = 0xFF
+} LedMode1;
+
+// 灯状态枚举
+typedef enum {
+    // 保留你原来所有的枚举值
+    // ...
+    
+    // 新增：无效初始值
+    LED_STATE_INVALID = 0xFF
+} LedState1;
 
 /* ---- 状态 ---- */
 static PageType s_current_page = PAGE_BOOT;
 static uint8_t  s_need_refresh = 1;    /* 全屏刷新标志 */
 
 /* 缓存上一次显示的值，用于只刷新变化行 */
-static LedMode  s_last_mode = 0xFF;
-static LedState s_last_led = 0xFF;
+static LedMode  s_last_mode = LED_MODE_INVALID;
+static LedState s_last_led  = LED_STATE_INVALID;
 static uint32_t s_last_count = 0xFFFFFFFF;
 static uint32_t s_last_seconds = 0xFFFFFFFF;
 
@@ -38,8 +55,8 @@ void Module_Display_Init(void)
     OLED_Clear();
     s_current_page = PAGE_BOOT;
     s_need_refresh = 1;
-    s_last_mode = 0xFF;
-    s_last_led = 0xFF;
+    s_last_mode = LED_MODE_INVALID;
+		s_last_led  = LED_STATE_INVALID;
     s_last_count = 0xFFFFFFFF;
     s_last_seconds = 0xFFFFFFFF;
 }
@@ -67,8 +84,8 @@ void Module_Display_ShowMainPage(void)
     OLED_Clear();
     s_current_page = PAGE_MAIN;
     s_need_refresh = 1;
-    s_last_mode = 0xFF;
-    s_last_led = 0xFF;
+    s_last_mode = LED_MODE_INVALID;
+		s_last_led  = LED_STATE_INVALID;
     s_last_count = 0xFFFFFFFF;
     s_last_seconds = 0xFFFFFFFF;
 

@@ -16,6 +16,8 @@ extern "C" {
 
 #include "stm32f1xx_hal.h"
 #include <stdint.h>
+#include "bsp_key.h"
+
 
 /* ---- 按键编号 ---- */
 #define KEY_ID_1    0
@@ -30,7 +32,7 @@ typedef enum {
 } KeyEventType;
 
 /* ---- 按键事件回调函数类型 ---- */
-typedef void (*KeyEventCallback)(uint8_t key_id, KeyEventType event);
+typedef void (*KeyEventCallback)(KeyID key_id, KeyLevel event);
 
 /* ---- 组件接口 ---- */
 

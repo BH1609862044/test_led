@@ -15,7 +15,7 @@ extern "C" {
 
 #include "stm32f1xx_hal.h"
 #include <stdint.h>
-
+#include "bsp_key.h"
 /* ---- 软件版本 ---- */
 #define APP_VERSION_STR    "v1.0.0"
 #define APP_PROJECT_NAME   "STM32 OLED LED Control Console"
@@ -38,7 +38,7 @@ void App_Loop(void);
  * @param  key_id  按键编号
  * @param  event   事件类型
  */
-void App_OnKeyEvent(uint8_t key_id, uint8_t event);
+void App_OnKeyEvent(KeyID key_id, KeyLevel event);
 
 /**
  * @brief  获取系统运行时间（秒）

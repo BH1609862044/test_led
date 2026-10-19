@@ -93,7 +93,7 @@ static void Key_TriggerEvent(uint8_t key_id, KeyEventType event)
     s_keys[key_id].short_press = 1;
 
     if (s_event_cb != 0) {
-        s_event_cb(key_id, event);
+		s_event_cb((KeyID)key_id, (KeyLevel)event);
     }
 }
 

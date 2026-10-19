@@ -8,7 +8,7 @@ typedef struct {
     GPIO_TypeDef *port;
     uint16_t      pin;
 } KeyPinMap;
-static const KeyPinMap s_key_map[KEY_NUM] = {
+static const KeyPinMap s_key_map[KEY_TOTAL] = {
     { KEY1_GPIO_Port, KEY1_Pin },   // KEY1 —— PA3
     { KEY2_GPIO_Port, KEY2_Pin },   // KEY2 —— PA4
     { KEY3_GPIO_Port, KEY3_Pin },   // KEY3 —— PA5
@@ -17,7 +17,7 @@ static const KeyPinMap s_key_map[KEY_NUM] = {
  * @brief  按键初始化（CubeMX 已配置 GPIO，此处可选）
  */
 void BSP_Key_Init(void)
-{
+{}
     // CubeMX 已配置 GPIO，此处可选
 /**
  * @brief  读取按键原始电平
@@ -27,7 +27,7 @@ void BSP_Key_Init(void)
  */
 KeyLevel BSP_Key_ReadLevel(KeyID id)
 {
-    if (id >= KEY_NUM) {
+    if (id >= KEY_TOTAL) {
         return KEY_RELEASED;
     }
     GPIO_PinState pin_state = HAL_GPIO_ReadPin(s_key_map[id].port, s_key_map[id].pin);
@@ -37,5 +37,4 @@ KeyLevel BSP_Key_ReadLevel(KeyID id)
     } else {
         return KEY_RELEASED;
     }
-}
 }

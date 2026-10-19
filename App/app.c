@@ -45,7 +45,7 @@ static uint32_t s_boot_tick = 0;
  * @note   由 Component/Key 在 Key_Scan 中触发
  *          在此处分发到具体业务逻辑
  */
-void App_OnKeyEvent(uint8_t key_id, uint8_t event)
+void App_OnKeyEvent(KeyID key_id, KeyLevel event)
 {
     if (event != 1) return;  /* 只处理短按事件 */
 

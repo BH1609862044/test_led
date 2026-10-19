@@ -1,12 +1,12 @@
 /**
  *********************************************************************
- * @file    bsp_key.h
- * @brief   板载按键板级封装头文件
- * @note    只负责读取 GPIO 电平，不做消抖和事件判断
+ * @file    bsp_led.h
+ * @brief   板载 LED 板级封装头文件
+ * @note    统一封装 LED 有效电平，业务层不直接操作 GPIO
  *********************************************************************
  */
-#ifndef __BSP_KEY_H
-#define __BSP_KEY_H
+#ifndef __BSP_LED_H
+#define __BSP_LED_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,26 +14,20 @@ extern "C" {
 
 #include "stm32f1xx_hal.h"
 
-/* ---- 按键编号 ---- */
+/* ---- LED 状态定义 ---- */
 typedef enum {
-    KEY_1 = 0,   // KEY1 按键
-    KEY_2 = 1,   // KEY2 按键
-    KEY_3 = 2,   // KEY3 按键
-    KEY_NUM      //按键总数 
-} KeyID;
+    LED_OFF = 0,  /* LED 熄灭 */
+    LED_ON  = 1   /* LED 点亮 */
+} LedState;
 
-/* ---- 按键电平状态 ---- */
-typedef enum {
-    KEY_RELEASED = 0,  // 按键松开
-    KEY_PRESSED  = 1   // 按键按下
-} KeyLevel;
-
-/* ---- 按键读取接口 ---- */
-void    BSP_Key_Init(void);       // 初始化（可选，CubeMX 已配置）
-KeyLevel BSP_Key_ReadLevel(KeyID id);  // 读取某按键的原始电平
+/* ---- 板载 LED 操作接口 ---- */
+void     BSP_LED_Init(void);     /* 初始化 LED GPIO（如需要，CubeMX 已初始化则可选） */
+void     BSP_LED_Set(LedState state);  /* 设置 LED 状态（ON/OFF） */
+void     BSP_LED_Toggle(void);   /* 翻转 LED 状态 */
+LedState BSP_LED_Get(void);      /* 读取当前 LED 状态 */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __BSP_KEY_H */
+#endif /* __BSP_LED_H */

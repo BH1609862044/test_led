@@ -15,12 +15,14 @@ extern "C" {
 #include "stm32f1xx_hal.h"
 
 /* ---- 按键编号 ---- */
+
 typedef enum {
-    KEY_1 = 0,   // KEY1
-    KEY_2 = 1,   // KEY2 按键
-    KEY_3 = 2,   // KEY3 按键
-    KEY_NUM      // 按键总数
+    KEY_1 = 0,    // KEY1
+    KEY_2 = 1,    // KEY2 按键
+    KEY_3 = 2,    // KEY3 按键
+    KEY_TOTAL     // 按键总数
 } KeyID;
+
 
 /* ---- 按键电平状态 ---- */
 typedef enum {

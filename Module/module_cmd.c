@@ -14,6 +14,7 @@
  *********************************************************************
  */
 #include "module_cmd.h"
+#include <stdio.h>
 #include "device_uart.h"
 #include "module_led.h"
 #include "component_key.h"
