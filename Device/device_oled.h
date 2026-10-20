@@ -61,7 +61,7 @@ void Device_OLED_Refresh(void);
  * @param  col   列（0~127）
  * @param  ch    字符
  */
-void Device_OLED_ShowChar(uint8_t page, uint8_t col, char ch);
+void Device_OLED_ShowChar(uint8_t x, uint8_t page, char ch);
 
 /**
  * @brief  在指定位置显示字符串
@@ -69,7 +69,7 @@ void Device_OLED_ShowChar(uint8_t page, uint8_t col, char ch);
  * @param  col   起始列
  * @param  str   字符串
  */
-void Device_OLED_ShowString(uint8_t page, uint8_t col, const char *str);
+void Device_OLED_ShowString(uint8_t x, uint8_t page, const char *str);
 
 /**
  * @brief  显示数字（指定长度）
@@ -78,7 +78,7 @@ void Device_OLED_ShowString(uint8_t page, uint8_t col, const char *str);
  * @param  num   数字
  * @param  len   显示长度（位数，不足前面补 0）
  */
-void Device_OLED_ShowNum(uint8_t page, uint8_t col, uint32_t num, uint8_t len);
+void Device_OLED_ShowNum(uint8_t x, uint8_t page, uint32_t num, uint8_t len);
 
 /* ---- 兼容旧命名（保留 OLED_ 前缀） ---- */
 #define OLED_Init()            Device_OLED_Init()

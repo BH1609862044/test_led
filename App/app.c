@@ -139,6 +139,9 @@ static void App_BootSelfTest(void)
              (unsigned)Module_Params_Get()->blink_period_ms);
     BSP_UART_SendString(buf);
 
+    /* 自检把 LED 直接拨动过，结束时按模块状态重新同步一次输出 */
+    Module_LED_SyncOutput();
+
     /* 稍作停留 */
     HAL_Delay(800);
 
@@ -184,10 +187,16 @@ void App_Init(void)
         const ParamsStruct *p = Module_Params_Get();
         Module_LED_SetBlinkPeriod(p->blink_period_ms);
         Module_LED_SetFastPeriod(p->fast_period_ms);
-        Module_LED_SetMode((LedMode)p->led_mode);
+        Module_LED_SetBreathPeriod(p->breath_period_ms);
+        /* 先恢复 LED 状态，再恢复模式：
+         * 因为 Module_LED_SetState() 会把模式切回 MANUAL，
+         * 如果顺序反过来，上电后就恢复不了 BLINK/BREATH */
         if (p->led_state == LED_ON) {
             Module_LED_SetState(LED_ON);
+        } else {
+            Module_LED_SetState(LED_OFF);
         }
+        Module_LED_SetMode((LedMode)p->led_mode);
     }
 
     Module_Cmd_Init();                  /* 串口命令 */

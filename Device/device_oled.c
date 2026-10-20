@@ -163,15 +163,23 @@ void Device_OLED_SetPos(uint8_t page, uint8_t col)
 /**
  * @brief  显示一个 6x8 ASCII 字符
  */
-void Device_OLED_ShowChar(uint8_t page, uint8_t col, char ch)
+/**
+ * @brief  显示一个 6x8 ASCII 字符
+ * @param  x     列坐标（像素，0~122）
+ * @param  page  页坐标（0~7）
+ * @param  ch    字符
+ */
+void Device_OLED_ShowChar(uint8_t x, uint8_t page, char ch)
 {
     uint8_t i, index;
 
+    if (page >= OLED_PAGES || x >= OLED_WIDTH) return;
     if (ch < 32 || ch > 127) ch = ' ';
+
     index = ch - 32;
 
-    Device_OLED_SetPos(page, col);
-    for (i = 0; i < 6; i++) {
+    Device_OLED_SetPos(page, x);
+    for (i = 0; i < 6 && (x + i) < OLED_WIDTH; i++) {
         oled_write_data(oled_font6x8[index][i]);
     }
 }
@@ -179,11 +187,17 @@ void Device_OLED_ShowChar(uint8_t page, uint8_t col, char ch)
 /**
  * @brief  显示字符串
  */
-void Device_OLED_ShowString(uint8_t page, uint8_t col, const char *str)
+/**
+ * @brief  显示字符串
+ * @param  x     起始列坐标（像素）
+ * @param  page  页坐标（0~7）
+ * @param  str   字符串
+ */
+void Device_OLED_ShowString(uint8_t x, uint8_t page, const char *str)
 {
-    while (*str && col < OLED_WIDTH) {
-        Device_OLED_ShowChar(page, col, *str);
-        col += 6;
+    while (*str && ((uint16_t)x + 6U) <= OLED_WIDTH) {
+        Device_OLED_ShowChar(x, page, *str);
+        x = (uint8_t)(x + 6);
         str++;
     }
 }
@@ -191,7 +205,7 @@ void Device_OLED_ShowString(uint8_t page, uint8_t col, const char *str)
 /**
  * @brief  显示数字（补零）
  */
-void Device_OLED_ShowNum(uint8_t page, uint8_t col, uint32_t num, uint8_t len)
+void Device_OLED_ShowNum(uint8_t x, uint8_t page, uint32_t num, uint8_t len)
 {
     char buf[11];
     uint8_t i;
@@ -201,7 +215,7 @@ void Device_OLED_ShowNum(uint8_t page, uint8_t col, uint32_t num, uint8_t len)
         num /= 10;
     }
     buf[len] = '\0';
-    Device_OLED_ShowString(page, col, buf);
+    Device_OLED_ShowString(x, page, buf);
 }
 
 /**

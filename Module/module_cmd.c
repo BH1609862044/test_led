@@ -38,6 +38,7 @@ static void cmd_get_param(void);
 static void cmd_set_mode(const char *param);
 static void cmd_set_period(const char *param);
 static void cmd_set_led(const char *param);
+static void cmd_main(const char *param);
 static void cmd_save(void);
 static void cmd_reset(void);
 
@@ -130,6 +131,9 @@ void Module_Cmd_Process(void)
     else if (strstart(s_line_buf, "SET LED ")) {
         cmd_set_led(s_line_buf + 8);
     }
+    else if (strstart(s_line_buf, "MAIN ")) {
+        cmd_main(s_line_buf + 5);
+    }
     else if (strcmp(s_line_buf, "SAVE") == 0) {
         cmd_save();
     }
@@ -156,9 +160,10 @@ static void cmd_help(void)
     BSP_UART_SendString(" STATUS             Show basic status\r\n");
     BSP_UART_SendString(" GET STATUS         Show full status\r\n");
     BSP_UART_SendString(" GET PARAM          Show saved parameters\r\n");
-    BSP_UART_SendString(" SET MODE 0/1/2     0=MANUAL 1=BLINK 2=FAST\r\n");
-    BSP_UART_SendString(" SET PERIOD N       Set blink period(100-5000ms)\r\n");
-    BSP_UART_SendString(" SET LED ON/OFF     Set LED state\r\n");
+    BSP_UART_SendString(" SET MODE 0/1/2/3   0=MANUAL 1=BLINK 2=FAST 3=BREATH\r\n");
+    BSP_UART_SendString(" SET PERIOD N       Blink 100-5000 / Breath 1000-10000\r\n");
+    BSP_UART_SendString(" SET LED ON/OFF     Set LED state (switch to MANUAL)\r\n");
+    BSP_UART_SendString(" MAIN ON/OFF/TOGGLE Set board LED only, keep mode\r\n");
     BSP_UART_SendString(" SAVE               Save params to Flash\r\n");
     BSP_UART_SendString(" RESET              Reset params to default\r\n");
     BSP_UART_SendString("====================\r\n");
@@ -262,7 +267,7 @@ static void cmd_get_status(void)
  */
 static void cmd_get_param(void)
 {
-    char buf[96];
+    char buf[128];
     const ParamsStruct *p = Module_Params_Get();
 
     snprintf(buf, sizeof(buf),
@@ -270,6 +275,7 @@ static void cmd_get_param(void)
              " MODE: %u (%s)\r\n"
              " BLINK PERIOD: %ums\r\n"
              " FAST PERIOD: %ums\r\n"
+             " BREATH PERIOD: %ums\r\n"
              " DEFAULT LED: %s\r\n"
              " PARAM VERSION: 0x%04X\r\n"
              "==================\r\n",
@@ -277,6 +283,7 @@ static void cmd_get_param(void)
              Module_LED_GetModeName((LedMode)p->led_mode),
              (unsigned)p->blink_period_ms,
              (unsigned)p->fast_period_ms,
+             (unsigned)p->breath_period_ms,
              p->led_state ? "ON" : "OFF",
              (unsigned)p->version);
     BSP_UART_SendString(buf);
@@ -291,7 +298,7 @@ static void cmd_set_mode(const char *param)
     char *end;
     long mode_num = strtol(param, &end, 10);
 
-    if (end == param || *end != '\0' || mode_num < 0 || mode_num > 2) {
+    if (end == param || *end != '\0' || mode_num < 0 || mode_num > 3) {
         send_error("MODE RANGE");
         Module_SysInfo_IncCmdErr();
         Module_SysInfo_SetLastError("MODE RANGE");
@@ -318,11 +325,23 @@ static void cmd_set_period(const char *param)
     char *end;
     long parsed_period = strtol(param, &end, 10);
     uint32_t period;
-    char buf[32];
+    uint16_t period_min;
+    uint16_t period_max;
+    char buf[40];
+    LedMode mode = Module_LED_GetMode();
+
+    /* 呼吸模式的合法范围和其他模式不同 */
+    if (mode == LED_MODE_BREATH) {
+        period_min = PARAM_BREATH_PERIOD_MIN;
+        period_max = PARAM_BREATH_PERIOD_MAX;
+    } else {
+        period_min = PARAM_BLINK_PERIOD_MIN;
+        period_max = PARAM_BLINK_PERIOD_MAX;
+    }
 
     if (end == param || *end != '\0' ||
-        parsed_period < PARAM_BLINK_PERIOD_MIN ||
-        parsed_period > PARAM_BLINK_PERIOD_MAX) {
+        parsed_period < (long)period_min ||
+        parsed_period > (long)period_max) {
         send_error("PERIOD RANGE");
         Module_SysInfo_IncCmdErr();
         Module_SysInfo_SetLastError("PERIOD RANGE");
@@ -331,7 +350,10 @@ static void cmd_set_period(const char *param)
     period = (uint32_t)parsed_period;
 
     /* 设置当前模式对应的周期 */
-    if (Module_LED_GetMode() == LED_MODE_FAST_BLINK) {
+    if (mode == LED_MODE_BREATH) {
+        Module_LED_SetBreathPeriod((uint16_t)period);
+        Module_Params_SetBreathPeriod((uint16_t)period);
+    } else if (mode == LED_MODE_FAST_BLINK) {
         Module_LED_SetFastPeriod((uint16_t)period);
         Module_Params_SetFastPeriod((uint16_t)period);
     } else {
@@ -345,10 +367,42 @@ static void cmd_set_period(const char *param)
 }
 
 /**
+ * @brief  MAIN 命令：只改板载 LED，不改变当前模式
+ * @note   用于让板载灯与 PWM 灯各自呈现不同状态
+ */
+static void cmd_main(const char *param)
+{
+    if (strcmp(param, "ON") == 0) {
+        Module_LED_SetMainLed(LED_ON);
+        send_ok("MAIN=ON");
+        Module_SysInfo_IncCmdOk();
+    }
+    else if (strcmp(param, "OFF") == 0) {
+        Module_LED_SetMainLed(LED_OFF);
+        send_ok("MAIN=OFF");
+        Module_SysInfo_IncCmdOk();
+    }
+    else if (strcmp(param, "TOGGLE") == 0) {
+        if (Module_LED_GetState() == LED_ON) {
+            Module_LED_SetMainLed(LED_OFF);
+            send_ok("MAIN=OFF");
+        } else {
+            Module_LED_SetMainLed(LED_ON);
+            send_ok("MAIN=ON");
+        }
+        Module_SysInfo_IncCmdOk();
+    }
+    else {
+        send_error("BAD MAIN STATE");
+        Module_SysInfo_IncCmdErr();
+        Module_SysInfo_SetLastError("BAD MAIN");
+    }
+}
+
+/**
  * @brief  SET LED 命令
  */
-static void cmd_set_led(const char *param)
-{
+static void cmd_set_led(const char *param){
     if (strcmp(param, "ON") == 0) {
         Module_LED_SetState(LED_ON);
         Module_Params_SetLedState(1);
@@ -401,6 +455,7 @@ static void cmd_reset(void)
     Module_LED_SetMode((LedMode)Module_Params_Get()->led_mode);
     Module_LED_SetBlinkPeriod(Module_Params_Get()->blink_period_ms);
     Module_LED_SetFastPeriod(Module_Params_Get()->fast_period_ms);
+    Module_LED_SetBreathPeriod(Module_Params_Get()->breath_period_ms);
     if (Module_Params_Get()->led_state) {
         Module_LED_SetState(LED_ON);
     } else {

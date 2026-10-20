@@ -3,8 +3,9 @@
  * @file    device_uart.c
  * @brief   串口设备层实现
  * @note    按行接收：遇到 \n 认为一行结束，去除 \r
- *          中断中只负责收字节和置标志，不做命令解析
- *          单条命令最长 UART_RX_BUF_SIZE，超长丢弃本行
+ *          中断中只负责收字节、拼行、入队，不做命令解析
+ *          单条命令最长 UART_RX_BUF_SIZE，超长行标记后丢弃
+ *          行队列可缓存 8 条命令，避免连续快速发送时丢命令
  *********************************************************************
  */
 #include "device_uart.h"
@@ -12,9 +13,9 @@
 #include <string.h>
 
 /* ---- 接收缓冲区 ---- */
-static uint8_t  s_rx_byte;                       // 单字节接收缓冲 
-static char     s_rx_buf[UART_RX_BUF_SIZE];      // 当前行缓冲区 
-static uint16_t s_rx_idx = 0;                    // 当前行写入位置 
+static uint8_t  s_rx_byte;                       // 单字节接收缓冲
+static char     s_rx_buf[UART_RX_BUF_SIZE];      // 当前行缓冲区
+static uint16_t s_rx_idx = 0;                    // 当前行写入位置
 static uint8_t  s_line_overflow = 0;             // 当前行超长标志
 
 typedef struct {
@@ -33,6 +34,20 @@ static uint32_t s_rx_byte_count = 0;  // 累计接收字节数
 static uint32_t s_cmd_count = 0;      // 累计命令行数
 
 /**
+ * @brief  重新挂接单字节中断接收
+ * @note   失败时清一次溢出标志再试，避免偶发的 HAL_BUSY 让接收悄悄停掉
+ */
+static void uart_arm_rx(void)
+{
+    UART_HandleTypeDef *h = BSP_UART_GetHandle();
+
+    if (HAL_UART_Receive_IT(h, &s_rx_byte, 1) != HAL_OK) {
+        __HAL_UART_CLEAR_OREFLAG(h);
+        (void)HAL_UART_Receive_IT(h, &s_rx_byte, 1);
+    }
+}
+
+/**
  * @brief  初始化串口设备层
  */
 void Device_UART_Init(void)
@@ -46,7 +61,7 @@ void Device_UART_Init(void)
     s_cmd_count = 0;
 
     /* 开启第一个字节的中断接收 */
-    HAL_UART_Receive_IT(BSP_UART_GetHandle(), &s_rx_byte, 1);
+    uart_arm_rx();
 }
 
 /**
@@ -134,7 +149,7 @@ uint32_t Device_UART_GetCmdCount(void)
 /**
  * @brief  串口接收完成回调（每次收到 1 字节调用一次）
  * @note   在 main.c 的 HAL_UART_RxCpltCallback 中调用此函数
- *         只做收字节、写缓冲、置标志，不做协议解析
+ *         只做收字节、拼行、入队，不做协议解析
  */
 void Device_UART_RxCpltCallback(void)
 {
@@ -151,25 +166,42 @@ void Device_UART_RxCpltCallback(void)
             s_line_queue[s_queue_head].too_long = s_line_overflow;
             s_queue_head = next_head;
         } else {
-            s_queue_overflow = 1;
+            s_queue_overflow = 1;   /* 队列满：标记，主循环会报 QUEUE FULL */
         }
         s_cmd_count++;
         s_rx_idx = 0;
         s_line_overflow = 0;
     } else if (s_rx_byte == '\r') {
-        //忽略回车符 
+        //忽略回车符
     } else if (s_line_overflow) {
         /* 超长行继续丢弃，直到换行 */
     } else {
-        //普通字符 
+        //普通字符
         if (s_rx_idx < UART_RX_BUF_SIZE - 1) {
             s_rx_buf[s_rx_idx++] = (char)s_rx_byte;
         } else {
-            //超长：标记并丢弃本行 
+            //超长：标记并丢弃本行
             s_line_overflow = 1;
         }
     }
 
     /* 重新开启下一字节接收 */
-    HAL_UART_Receive_IT(BSP_UART_GetHandle(), &s_rx_byte, 1);
+    uart_arm_rx();
+}
+
+/**
+ * @brief  串口出错后重启接收
+ * @note   HAL 在检测到 ORE（溢出）时会调用弱函数 HAL_UART_ErrorCallback
+ *         并主动关闭接收中断；这里清标志并重新挂接，避免串口"假死"
+ */
+void Device_UART_RestartRx(void)
+{
+    UART_HandleTypeDef *h = BSP_UART_GetHandle();
+
+    __HAL_UART_CLEAR_OREFLAG(h);
+
+    /* 非阻塞错误（PE/FE/NE）时 HAL 仍在接收，不能重复挂接 */
+    if (h->RxState != HAL_UART_STATE_BUSY_RX) {
+        uart_arm_rx();
+    }
 }

@@ -8,7 +8,7 @@
 #include <string.h>
 
 /* ---- 软件版本 ---- */
-static const char s_sw_version[] = "v1.1.0";
+static const char s_sw_version[] = "v1.2.3";
 
 /* ---- 统计数据 ---- */
 static uint32_t s_cmd_ok_count = 0;

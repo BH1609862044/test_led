@@ -19,12 +19,14 @@ extern "C" {
 
 /* ---- 页面类型 ---- */
 typedef enum {
-    PAGE_BOOT = 0,        /* 启动页 */
-    PAGE_HOME = 1,        /* 第1页：首页 */
-    PAGE_LED_CTRL = 2,    /* 第2页：LED 控制 */
-    PAGE_BLINK_PARAM = 3, /* 第3页：闪烁参数 */
-    PAGE_SYSINFO = 4,     /* 第4页：系统信息 */
-    PAGE_CMD_HELP = 5,    /* 第5页：命令说明 */
+    PAGE_BOOT = 0,          /* 启动页 */
+    PAGE_HOME = 1,          /* P1 首页 */
+    PAGE_LED_CTRL = 2,      /* P2 LED 控制（模式/开关） */
+    PAGE_BLINK_PARAM = 3,   /* P3 慢闪周期（10ms 一档） */
+    PAGE_FAST_PARAM = 4,    /* P4 快闪周期（10ms 一档） */
+    PAGE_BREATH_PARAM = 5,  /* P5 呼吸周期（100ms 一档） */
+    PAGE_SYSINFO = 6,       /* P6 系统信息 */
+    PAGE_CMD_HELP = 7,      /* P7 命令说明 */
     PAGE_MAX
 } PageType;
 

@@ -2,8 +2,8 @@
  *********************************************************************
  * @file    device_uart.h
  * @brief   串口设备层头文件
- * @note    实现按行接收、环形缓冲、行就绪标志
- *          中断回调只负责接收字节和置位标志，不解析命令
+ * @note    实现按行接收、环形行队列、行就绪标志
+ *          中断只负责收字节、拼行、入队；命令解析在主循环里做
  *********************************************************************
  */
 #ifndef __DEVICE_UART_H
@@ -17,15 +17,15 @@ extern "C" {
 #include <stdint.h>
 
 /* ---- 配置 ---- */
-#define UART_RX_BUF_SIZE   64     //单条命令最大长度 
-#define UART_CMD_BUF_MAX   8      //最大命令行数（环形缓冲区大小）
+#define UART_RX_BUF_SIZE   64     //单条命令最大长度
+#define UART_CMD_BUF_MAX   8      //最大命令行数（环形队列深度）
 #define UART_RX_LINE_TOO_LONG 0xFFFFU
 #define UART_RX_QUEUE_FULL 0xFFFEU
 
 /* ---- 设备层接口 ---- */
 
 /**
- * @brief  初始化串口设备层（开启中断接收）
+ * @brief  初始化串口设备层（清空队列并开启中断接收）
  */
 void Device_UART_Init(void);
 
@@ -51,20 +51,25 @@ uint16_t Device_UART_ReadLine(char *buf, uint16_t size);
 
 /**
  * @brief  获取串口接收字节计数
- * @return 累计接收字节数
  */
 uint32_t Device_UART_GetRxCount(void);
 
 /**
  * @brief  获取串口命令接收计数
- * @return 累计接收命令行数
  */
 uint32_t Device_UART_GetCmdCount(void);
 
 /**
- * @brief  串口中断接收回调（内部使用，在 main.c 的 HAL_UART_RxCpltCallback 中调用）
+ * @brief  串口接收完成回调（在 main.c 的 HAL_UART_RxCpltCallback 中调用）
  */
 void Device_UART_RxCpltCallback(void);
+
+/**
+ * @brief  串口出错后重启接收
+ * @note   在 HAL_UART_ErrorCallback 中调用。
+ *         HAL 检测到溢出(ORE)后会主动关闭接收中断，若不重启则串口永久失联
+ */
+void Device_UART_RestartRx(void);
 
 #ifdef __cplusplus
 }

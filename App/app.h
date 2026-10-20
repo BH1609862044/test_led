@@ -17,7 +17,7 @@ extern "C" {
 #include <stdint.h>
 
 /* ---- 软件版本 ---- */
-#define APP_VERSION_STR     "v1.1.0"
+#define APP_VERSION_STR     "v1.2.3"
 #define APP_PROJECT_NAME    "STM32 OLED LED Control Console"
 
 /* ---- 应用层接口 ---- */

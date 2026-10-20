@@ -66,6 +66,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         Device_UART_RxCpltCallback();
     }
 }
+
+/**
+  * @brief  串口错误回调：清溢出标志并重启接收，避免串口永久失联
+  */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        Device_UART_RestartRx();
+    }
+}
 /* USER CODE END 0 */
 
 /**
